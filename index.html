@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Storage Virtual Terminal</title>
+    <style>
+        body { 
+            background-color: #2b2b2b; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            font-family: 'Courier New', Courier, monospace; 
+        }
+        .terminal-container { 
+            width: 80%; 
+            max-width: 900px; 
+            height: 600px; 
+            background-color: #0c0c0c; 
+            border-radius: 8px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+            border: 1px solid #333; 
+        }
+        .terminal-header { 
+            background-color: #333; 
+            color: #ccc; 
+            padding: 8px 15px; 
+            font-size: 14px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid #111; 
+        }
+        .dots span { 
+            display: inline-block; 
+            width: 12px; 
+            height: 12px; 
+            border-radius: 50%; 
+            margin-right: 6px; 
+        }
+        .dot-red { background-color: #ff5f56; } 
+        .dot-yellow { background-color: #ffbd2e; } 
+        .dot-green { background-color: #27c93f; }
+        .terminal-body { 
+            padding: 20px; 
+            flex-grow: 1; 
+            overflow-y: auto; 
+            color: #00ff00; 
+        }
+        .terminal-body p { 
+            margin: 5px 0; 
+            line-height: 1.5; 
+            word-wrap: break-word; 
+        }
+        .input-line { 
+            display: flex; 
+            align-items: center; 
+            margin-top: 10px; 
+        }
+        .prompt { 
+            color: #00ff00; 
+            margin-right: 10px; 
+            font-weight: bold; 
+        }
+        input[type="text"] { 
+            background: transparent; 
+            border: none; 
+            color: #00ff00; 
+            font-family: 'Courier New', Courier, monospace; 
+            font-size: 16px; 
+            flex-grow: 1; 
+            outline: none; 
+            caret-color: #00ff00; 
+        }
+        ::-webkit-scrollbar { width: 8px; } 
+        ::-webkit-scrollbar-track { background: #0c0c0c; } 
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        .sys-msg { color: #ccc; } 
+        .err-msg { color: #ff5f56; } 
+        .success-msg { color: #27c93f; }
+    </style>
+</head>
+<body>
+
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <div class="dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+            </div>
+            <div>root@virtualterminal-1342f:~</div>
+            <div></div>
+        </div>
+
+        <div class="terminal-body" id="terminal-content">
+            <p>Welcome to CloudOS. Connected to Google Cloud Storage.</p>
+            <p>Type <b style="color:#fff">help</b> to see available commands.</p>
+            <br>
+        </div>
+
+        <div class="input-line" style="padding: 0 20px 20px 20px;">
+            <span class="prompt">root@virtualterminal-1342f:~#</span>
+            <input type="text" id="command-input" autocomplete="off" autofocus>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-analytics.js";
+        import { getStorage, ref, uploadString, listAll, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmBK8V1bVwMOnmpjZtkVMsxSTk4Cmtx-M",
+            authDomain: "virtualterminal-1342f.firebaseapp.com",
+            projectId: "virtualterminal-1342f",
+            storageBucket: "virtualterminal-1342f.firebasestorage.app",
+            messagingSenderId: "948238334443",
+            appId: "1:948238334443:web:dd38111f1e9ab2316b41ae",
+            measurementId: "G-GCB4HPHZJN"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const storage = getStorage(app);
+        
+        // Terminal DOM Elements
+        const input = document.getElementById('command-input');
+        const content = document.getElementById('terminal-content');
+
+        // Helper function to print to terminal
+        function printMsg(htmlContent, className = "sys-msg") {
+            content.innerHTML += `<p class="${className}">${htmlContent}</p>`;
+            content.scrollTop = content.scrollHeight;
+        }
+
+        // Keep focus on input so typing always works
+        document.querySelector('.terminal-container').addEventListener('click', () => {
+            input.focus();
+        });
+
+        // Handle commands when Enter is pressed
+        input.addEventListener('keypress', async function(e) {
+            if (e.key === 'Enter') {
+                const fullCommand = input.value.trim();
+                input.value = ''; // clear input immediately
+                
+                if (fullCommand === '') {
+                    content.innerHTML += `<p><span class="prompt">root@virtualterminal-1342f:~#</span></p>`;
+                    content.scrollTop = content.scrollHeight;
+                    return;
+                }
+
+                // Echo the command the user typed
+                content.innerHTML += `<p><span class="prompt">root@virtualterminal-1342f:~#</span> ${fullCommand}</p>`;
+
+                // Parse command and arguments
+                const parts = fullCommand.split(' ');
+                const cmd = parts[0].toLowerCase();
+                const args = parts.slice(1);
+
+                // Command processing logic
+                try {
+                    switch(cmd) {
+                        case 'help':
+                            printMsg("Available commands:<br>- <b>ls</b>: List files in Google Storage<br>- <b>write [filename] [text]</b>: Create a file with text<br>- <b>cat [filename]</b>: Read a file<br>- <b>rm [filename]</b>: Delete a file<br>- <b>clear</b>: Clear screen");
+                            break;
+
+                        case 'clear':
+                            content.innerHTML = '';
+                            break;
+
+                        case 'ls':
+                            printMsg("Fetching files from Google Storage...");
+                            const listRef = ref(storage, 'terminal_files/');
+                            const res = await listAll(listRef);
+                            
+                            if (res.items.length === 0) {
+                                printMsg("Directory is empty.");
+                            } else {
+                                let fileList = res.items.map(item => item.name).join(' &nbsp;&nbsp;&nbsp; ');
+                                printMsg(fileList, "success-msg");
+                            }
+                            break;
+
+                        case 'write':
+                            if (args.length < 2) {
+                                printMsg("Usage: write [filename] [content...]", "err-msg");
+                                break;
+                            }
+                            const filename = args[0];
+                            const fileContent = args.slice(1).join(' ');
+                            const writeRef = ref(storage, 'terminal_files/' + filename);
+                            
+                            printMsg(`Writing to ${filename}...`);
+                            await uploadString(writeRef, fileContent);
+                            printMsg("File saved successfully.", "success-msg");
+                            break;
+
+                        case 'cat':
+                            if (args.length !== 1) {
+                                printMsg("Usage: cat [filename]", "err-msg");
+                                break;
+                            }
+                            const readRef = ref(storage, 'terminal_files/' + args[0]);
+                            
+                            printMsg(`Reading ${args[0]}...`);
+                            const url = await getDownloadURL(readRef);
+                            const response = await fetch(url);
+                            const text = await response.text();
+                            printMsg(text, "success-msg");
+                            break;
+
+                        case 'rm':
+                            if (args.length !== 1) {
+                                printMsg("Usage: rm [filename]", "err-msg");
+                                break;
+                            }
+                            const deleteRef = ref(storage, 'terminal_files/' + args[0]);
+                            
+                            printMsg(`Deleting ${args[0]}...`);
+                            await deleteObject(deleteRef);
+                            printMsg("File deleted.", "success-msg");
+                            break;
+
+                        default:
+                            printMsg(`bash: ${cmd}: command not found`, "err-msg");
+                    }
+                } catch (error) {
+                    // This catches errors like trying to read a file that doesn't exist
+                    printMsg(`Error: ${error.message}`, "err-msg");
+                }
+                
+                // Always scroll to the bottom after a command finishes
+                content.scrollTop = content.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
+
